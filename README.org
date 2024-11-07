@@ -5,4 +5,8 @@ MIT 6.1810 OS
 
 For each of the labs you will check out a version of xv6 tailored for that lab
 
+* Resources
+[[https://pdos.csail.mit.edu/6.S081/2024/schedule.html][MIT 6.S081]]
+
+[[https://pdos.csail.mit.edu/6.S081/2024/schedule.html][An Introduction to Programming with Threads]]
 
