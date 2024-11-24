@@ -1,0 +1,11 @@
+* GDB how to
+
+1. compile and run gdb qemu
+   make
+   make qemu-gdb
+
+2. in another window
+   cd to kernel dir
+   gdb-multiarch kernel
+   target remote localhost:25000
+
