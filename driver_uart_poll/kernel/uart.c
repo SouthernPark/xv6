@@ -72,7 +72,7 @@ uartinit(void)
   WriteReg(FCR, FCR_FIFO_ENABLE | FCR_FIFO_CLEAR);
 
   // enable transmit and receive interrupts.
-  WriteReg(IER, IER_TX_ENABLE | IER_RX_ENABLE);
+  // WriteReg(IER, IER_TX_ENABLE | IER_RX_ENABLE);
 
   initlock(&uart_tx_lock, "uart");
 }
@@ -176,16 +176,17 @@ uartgetc(void)
 void
 uartintr(void)
 {
+
   // read and process incoming characters.
-  while(1){
-    int c = uartgetc();
-    if(c == -1)
-      break;
-    consoleintr(c);
-  }
+  /* while(1){ */
+  /*   int c = uartgetc(); */
+  /*   if(c == -1) */
+  /*     break; */
+  /*   consoleintr(c); */
+  /* } */
 
   // send buffered characters.
-  acquire(&uart_tx_lock);
-  uartstart();
-  release(&uart_tx_lock);
+  /* acquire(&uart_tx_lock); */
+  /* uartstart(); */
+  /* release(&uart_tx_lock); */
 }

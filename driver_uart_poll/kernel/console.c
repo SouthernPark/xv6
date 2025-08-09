@@ -64,7 +64,8 @@ consolewrite(int user_src, uint64 src, int n)
     char c;
     if(either_copyin(&c, user_src, src+i, 1) == -1)
       break;
-    uartputc(c);
+    // uartputc(c);
+    uartputc_sync(c);
   }
 
   return i;
@@ -93,7 +94,21 @@ consoleread(int user_dst, uint64 dst, int n)
         release(&cons.lock);
         return -1;
       }
-      sleep(&cons.r, &cons.lock);
+      // sleep(&cons.r, &cons.lock);
+
+      release(&cons.lock); // need to release lock before calling consoleintr
+      while ((c = uartgetc()) != -1) {
+        // Reuse existing input processing path.
+        consoleintr(c);
+      }
+
+      // Optional: be a little nice to the scheduler to avoid
+      // a hot spin if there's truly no input.
+      // You can use either a tiny pause or yield():
+      // for (volatile int i = 0; i < 1000; i++) ;
+      yield();
+
+      acquire(&cons.lock);
     }
 
     c = cons.buf[cons.r++ % INPUT_BUF_SIZE];

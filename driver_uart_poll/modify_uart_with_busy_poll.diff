@@ -1,0 +1,91 @@
+diff --git a/driver_uart_poll/kernel/console.c b/driver_uart_poll/kernel/console.c
+index 05dc526..9213891 100644
+--- a/driver_uart_poll/kernel/console.c
++++ b/driver_uart_poll/kernel/console.c
+@@ -64,7 +64,8 @@ consolewrite(int user_src, uint64 src, int n)
+     char c;
+     if(either_copyin(&c, user_src, src+i, 1) == -1)
+       break;
+-    uartputc(c);
++    // uartputc(c);
++    uartputc_sync(c);
+   }
+ 
+   return i;
+@@ -93,7 +94,21 @@ consoleread(int user_dst, uint64 dst, int n)
+         release(&cons.lock);
+         return -1;
+       }
+-      sleep(&cons.r, &cons.lock);
++      // sleep(&cons.r, &cons.lock);
++
++      release(&cons.lock); // need to release lock before calling consoleintr
++      while ((c = uartgetc()) != -1) {
++        // Reuse existing input processing path.
++        consoleintr(c);
++      }
++
++      // Optional: be a little nice to the scheduler to avoid
++      // a hot spin if there's truly no input.
++      // You can use either a tiny pause or yield():
++      // for (volatile int i = 0; i < 1000; i++) ;
++      yield();
++
++      acquire(&cons.lock);
+     }
+ 
+     c = cons.buf[cons.r++ % INPUT_BUF_SIZE];
+diff --git a/driver_uart_poll/kernel/trap.c b/driver_uart_poll/kernel/trap.c
+index d454a7d..0e7943e 100644
+--- a/driver_uart_poll/kernel/trap.c
++++ b/driver_uart_poll/kernel/trap.c
+@@ -193,7 +193,8 @@ devintr()
+     int irq = plic_claim();
+ 
+     if(irq == UART0_IRQ){
+-      uartintr();
++      panic("Uart interrupt should be disabled already");
++      // uartintr();
+     } else if(irq == VIRTIO0_IRQ){
+       virtio_disk_intr();
+     } else if(irq){
+diff --git a/driver_uart_poll/kernel/uart.c b/driver_uart_poll/kernel/uart.c
+index 83846ad..d4c94ad 100644
+--- a/driver_uart_poll/kernel/uart.c
++++ b/driver_uart_poll/kernel/uart.c
+@@ -72,7 +72,7 @@ uartinit(void)
+   WriteReg(FCR, FCR_FIFO_ENABLE | FCR_FIFO_CLEAR);
+ 
+   // enable transmit and receive interrupts.
+-  WriteReg(IER, IER_TX_ENABLE | IER_RX_ENABLE);
++  // WriteReg(IER, IER_TX_ENABLE | IER_RX_ENABLE);
+ 
+   initlock(&uart_tx_lock, "uart");
+ }
+@@ -176,16 +176,17 @@ uartgetc(void)
+ void
+ uartintr(void)
+ {
++
+   // read and process incoming characters.
+-  while(1){
+-    int c = uartgetc();
+-    if(c == -1)
+-      break;
+-    consoleintr(c);
+-  }
++  /* while(1){ */
++  /*   int c = uartgetc(); */
++  /*   if(c == -1) */
++  /*     break; */
++  /*   consoleintr(c); */
++  /* } */
+ 
+   // send buffered characters.
+-  acquire(&uart_tx_lock);
+-  uartstart();
+-  release(&uart_tx_lock);
++  /* acquire(&uart_tx_lock); */
++  /* uartstart(); */
++  /* release(&uart_tx_lock); */
+ }

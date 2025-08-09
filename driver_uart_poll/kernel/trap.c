@@ -193,7 +193,8 @@ devintr()
     int irq = plic_claim();
 
     if(irq == UART0_IRQ){
-      uartintr();
+      panic("Uart interrupt should be disabled already");
+      // uartintr();
     } else if(irq == VIRTIO0_IRQ){
       virtio_disk_intr();
     } else if(irq){

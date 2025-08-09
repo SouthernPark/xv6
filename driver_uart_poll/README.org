@@ -1,0 +1,186 @@
+#+title: Lab Driver
+
+#+STARTUP: showall indent
+#+STARTUP: hidestars
+#+TOC: nil  ;; Disable table of contents by default
+#+OPTIONS: toc:nil  ;; Disable TOC in HTML export
+
+#+BEGIN_EXPORT html
+---
+layout: default
+title: Lab Driver
+nav_exclude: true
+---
+#+END_EXPORT
+
+* Modify Uart so that do not need interrupt
+Use poll, the CPU will periordically check the UART registers.
+
+But we need to disable the interrupt first:
+** disable uart interrupt
+[[https://github.com/mit-pdos/xv6-riscv/blob/2e5f272f8208fc11c26ea999ba706fcd6e86f51d/kernel/uart.c#L54][uartinit]] has the code to enable and disable interrupts.
+#+begin_src c
+void
+uartinit(void)
+{
+  // Don't do this anymore:
+  WriteReg(IER, IER_TX_ENABLE | IER_RX_ENABLE);
+}
+#+end_src
+
+Also would be better to remove the interrupt handler for uart.
+[[https://github.com/mit-pdos/xv6-riscv/blob/2e5f272f8208fc11c26ea999ba706fcd6e86f51d/kernel/uart.c#L181][uartintr]]
+#+begin_src c
+void
+uartintr(void)
+{
+  // comment these code
+}
+#+end_src
+
+
+Also we could comment the following trap and report panic if uart interrupt is still there
+[[https://github.com/mit-pdos/xv6-riscv/blob/2e5f272f8208fc11c26ea999ba706fcd6e86f51d/kernel/trap.c#L197][devintr]]
+#+begin_src c
+int
+devintr()
+{
+  if(irq == UART0_IRQ){
+    panic("Uart interrupt should be disabled already");
+    // comment code
+    // uartintr();
+  }
+}
+#+end_src
+
+** polling
+Polling should happens on the bottom half because it may cause blocking
+
+So we for pulling we need to modify console part.
+
+*** consoleread
+With interrupt we have: uartintr (read one byte) -> consoleintr (triger console read when \n is hit) -> consoleread
+
+But now we do not have interrupt, the logs chanegs to
+consoleread continuously reading char directly from uart and yield while spin on uart.
+ xv6 already has uartgetc() that returns -1 if no byte is available.
+#+begin_src c
+// kernel/console.c
+#include "types.h"
+#include "param.h"
+#include "spinlock.h"
+#include "sleeplock.h"
+#include "riscv.h"
+#include "defs.h"
+
+struct {
+  struct spinlock lock;
+  int locking;
+
+  // input
+  char buf[INPUT_BUF_SIZE];
+  uint r;  // Read index
+  uint w;  // Write index
+  uint e;  // Edit index
+} cons;
+
+// forward decl stays the same
+extern int uartgetc(void);
+extern void uartputcsync(int);
+
+static void consputc(int c);
+
+
+int
+consoleread(int user_dst, uint64 dst, int n)
+{
+  uint target = n;
+  int c;
+  char cbuf;
+
+  acquire(&cons.lock);
+  while (n > 0) {
+    // If buffer empty, drop the lock and poll UART for more bytes.
+    while (cons.r == cons.w) {
+      if (killed(myproc())) {
+        release(&cons.lock);
+        return -1;
+      }
+
+      // Release lock before touching UART or calling consoleintr().
+      release(&cons.lock);
+
+      while ((c = uartgetc()) != -1) {
+        // Reuse existing input processing path.
+
+        // ------------ UNCHANGED: consoleintr(c) -------------
+        // Keep your existing consoleintr(c) exactly as in xv6.
+        // It implements ^U, backspace, ^P, ^D, normal chars, echoing, etc.
+        // It acquires &cons.lock internally and appends to cons.buf.
+        //
+        // void consoleintr(int c) { ... }  // same as stock
+        // -----------------------------------------------------
+
+        // Small helper to harvest all currently-available UART bytes
+        // and feed them through the standard console line discipline.
+        consoleintr(c);
+      }
+
+      // Optional: be a little nice to the scheduler to avoid
+      // a hot spin if there's truly no input.
+      // You can use either a tiny pause or yield():
+      // for (volatile int i = 0; i < 1000; i++) ;
+      yield();
+
+      acquire(&cons.lock);
+      // Loop back and check cons.r vs cons.w again.
+    }
+
+    // There is at least one byte available.
+    c = cons.buf[cons.r++ % INPUT_BUF_SIZE];
+
+    if (c == C('D')) { // EOF
+      if (n < target) {
+        cons.r--; // Leave ^D in the buffer for next time if we've read some bytes.
+      }
+      break;
+    }
+
+    cbuf = c;
+    release(&cons.lock);
+    if (either_copyout(user_dst, dst, &cbuf, 1) == -1)
+      return -1;
+    acquire(&cons.lock);
+
+    dst++;
+    n--;
+    if (c == '\n')
+      break;
+  }
+  release(&cons.lock);
+  return target - n;
+}
+
+int
+consolewrite(int user_src, uint64 src, int n)
+{
+  int i;
+  char c;
+
+
+  for (i = 0; i < n; i++) {
+    if (either_copyin(&c, user_src, src + i, 1) == -1)
+      break;
+
+    // uartputc(c);
+    uartputc_sync(c);
+  }
+
+  return i;
+}
+
+#+end_src
+
+
+The consolewrite uses uartputc_sync which will busy spin on uart, but it's ok
+writes are short — mostly interactive output — so the wait is tiny.
