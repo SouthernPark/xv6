@@ -5,6 +5,21 @@ MIT 6.1810 OS
 
 For each of the labs you will check out a version of xv6 tailored for that lab
 
+For example for [[git clone git://g.csail.mit.edu/xv6-labs-2024][page table lab]], you can have the following
+
+#+begin_src 
+git clone git://g.csail.mit.edu/xv6-labs-2024
+mv xv6-labs-2024 page_table
+cd page_table
+git fetch
+git checkout pgtbl
+
+root@LAPTOP-FOPVC68I:~/xv6/page_table# git branch
+pgtbl
+
+rm -rf .git*
+#+end_src
+
 * Resources
 [[https://pdos.csail.mit.edu/6.S081/2024/schedule.html][MIT 6.S081]]
 
